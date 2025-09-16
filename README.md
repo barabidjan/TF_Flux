@@ -13,21 +13,7 @@ module "kind_cluster" {
 ✗ terraform init
 Terraform has been successfully initialized!
 ```
-- В процесі отримуємо помилку:
-```sh
-Error: Failed to query available provider packages
-│ 
-│ Could not retrieve the list of available versions for provider fluxcd/flux: locked provider registry.terraform.io/fluxcd/flux 1.2.1 does not match configured version constraint 1.0.0-rc.3; must use terraform init -upgrade to
-│ allow selection of new versions
-```
-- Щоб уникнути ціє помилки робимо модуль локальним та змінюємо у файлі `terraform.tf` версію провайдера на `1.2.1`
-```hcl
-  required_providers {
-    flux = {
-      source  = "fluxcd/flux"
-      version = "1.2.1"
-    }
-```
+
 - Виконуємо оновлення провайдера командою:
 ```sh
 terraform init -upgrade
@@ -76,12 +62,12 @@ module.tls_private_key.tls_private_key.this
 Щоб розмістити файл state в бакеті, ви можете використовувати команду terraform init з опцією --backend-config. Наприклад, щоб розмістити файл state в бакеті Google Cloud Storage, ви можете виконати наступну команду:
 ```sh
 # Створимо bucket:
-$ gsutil mb gs://vit-secret
-Creating gs://vit-secret/...
+$ gsutil mb gs://inv-secret
+Creating gs://inv-secret/...
 
 # Перевірити вміст диску:
-$ gsutil ls gs://vit-secret
-gs://vit-secret/terraform/
+$ gsutil ls gs://inv-secret
+gs://inv-secret/terraform/
 ```
 7. Як створити bucket [читаємо документацію](https://developer.hashicorp.com/terraform/language/settings/backends/gcs#example-configuration) та додаємо до основного файлу конфігурації наступний код:
 
@@ -89,7 +75,7 @@ gs://vit-secret/terraform/
 terraform {
   backend "gcs" {
     bucket  = "tf-state-prod"
-    prefix  = "vit-secret"
+    prefix  = "inv-secret"
   }
 }
 ```
@@ -109,12 +95,12 @@ kube-public          Active   16m
 kube-system          Active   16m
 local-path-storage   Active   16m
 
-✗ k get po -n flux-system
+✗ ydibka@cloudshell:~/flux-gitops/clusters/demo (terraformtest-472215)$ k get po -n flux-system
 NAME                                       READY   STATUS    RESTARTS   AGE
-helm-controller-69dbf9f968-qsgq9           1/1     Running   0          16m
-kustomize-controller-796b4fbf5d-jxqdx      1/1     Running   0          16m
-notification-controller-78f97c759b-c8vpr   1/1     Running   0          16m
-source-controller-7bc7c48d8d-c8kxk         1/1     Running   0          16m
+helm-controller-b6767d66-9hv6t             1/1     Running   0          65m
+kustomize-controller-57c7ff5596-rcggs      1/1     Running   0          65m
+notification-controller-58ffd586f7-c4pff   1/1     Running   0          65m
+source-controller-6ff87cb475-rhk4g         1/1     Running   0          65m
 ``` 
 9. Для зручності встановимо [CLI клієнт Flux](https://fluxcd.io/flux/installation/)
 ```sh
@@ -140,23 +126,26 @@ metadata:
 У даному випадку буде створено `ns demo`:
 ```sh
 
-✗ flux logs -f
-2023-12-19T08:36:29.686Z info GitRepository/flux-system.flux-system - stored artifact for commit 'Create ns.yaml' 
-2023-12-19T08:37:31.484Z info GitRepository/flux-system.flux-system - garbage collected 1 artifacts 
-
-✗ k get ns 
+✗ ydibka@cloudshell:~/flux-gitops/clusters/demo (terraformtest-472215)$ flux logs -f
+2025-09-16T16:56:27.979Z info GitRepository/flux-system.flux-system - stored artifact for commit 'Add Flux sync manifests' 
+✗ ydibka@cloudshell:~/flux-gitops/clusters/demo (terraformtest-472215)$ k get ns
 NAME                 STATUS   AGE
-default              Active   23m
-demo                 Active   4s
+default              Active   67m
+demo                 Active   51m
+flux-system          Active   67m
+kube-node-lease      Active   67m
+kube-public          Active   67m
+kube-system          Active   67m
+local-path-storage   Active   67m
 ```
 Це був приклад як Flux може керувати конфігурацією ІС Kubernetes
 
 11. Застосуємо CLI Flux для генерації маніфестів необхідних ресурсів:
 ```sh
-$ git clone https://github.com/vit-um/flux-gitops.git
+$ git clone https://github.com/barabidjan/flux-gitops.git
 $ cd ../flux-gitops 
 $ flux create source git kbot \
-    --url=https://github.com/vit-um/kbot \
+    --url=https://github.com/barabidjan/kbot \
     --branch=main \
     --namespace=demo \
     --export > clusters/demo/kbot-gr.yaml
@@ -180,12 +169,10 @@ $ flux logs -f
 
 11. Перевіримо наявність пода з нашим PET-проектом та розберемо кластер:
 ```sh
-$ k get po -n demo
-NAME                         READY   STATUS             RESTARTS       AGE
-kbot-helm-6796599d7c-sqwx7   0/1     CrashLoopBackOff   7 (100s ago)   12m
-k describe po -n demo | grep Warning
-  Warning  BackOff    4m35s (x47 over 14m)  kubelet            Back-off restarting failed container kbot in pod kbot-helm-6796599d7c-sqwx7_demo(401ca7a7-2b0c-4a27-b81c-e053936cd9ed)
-
-$ tf destroy
+$ ydibka@cloudshell:~/flux-gitops/clusters/demo (terraformtest-472215)$ k get po -n demo
+NAME                         READY   STATUS         RESTARTS   AGE
+kbot-helm-7c84f6c995-k4bht   0/1     ErrImagePull   0          21m
+ydibka@cloudshell:~/flux-gitops/clusters/demo (terraformtest-472215)$ k describe po -n demo | grep Warning
+  Warning  Failed     19m (x5 over 22m)     kubelet            Failed to pull image "barabidjan/helm:v1.1.0-cc72606-amd64": failed to pull and unpack image "docker.io/barabidjan/helm:v1.1.0-cc72606-amd64": failed to resolve reference "docker.io/barabidjan/helm:v1.1.0-cc72606-amd64": pull access denied, repository does not exist or may require authorization: server message: insufficient_scope: authorization failed
 $ tf state list 
 ```
