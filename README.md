@@ -5,22 +5,22 @@
 1. Роботу будемо виконувати на локальному комп'ютері, отже виконаємо [Authorize the gcloud CLI](https://cloud.google.com/sdk/docs/authorizing)
 ```sh
 $ gcloud init
-* Commands that require authentication will use umanetsvitaliy@gmail.com by default
-* Commands will reference project `vit-um` by default
+* Commands that require authentication will use ydibka@gmail.com by default
+* Commands will reference project `terraformtest-472215` by default
 * Compute Engine commands will use region `europe-west3` by default
 * Compute Engine commands will use zone `europe-west3-c` by default
 
 $ gcloud auth list
      Credentialed Accounts
 ACTIVE  ACCOUNT
-*       umanetsvitaliy@gmail.com
+*       ydibka@gmail.com
 $ gcloud info
 Google Cloud SDK [456.0.0]
 ```
 2. У файлі main.tf додайте наступний блок коду:
 ```hlc
 module "gke_cluster" {
-  source         = "github.com/vit-um/tf-google-gke-cluster"
+  source         = "github.com/barabidjan/tf-google-gke-cluster"
   GOOGLE_REGION  = var.GOOGLE_REGION
   GOOGLE_PROJECT = var.GOOGLE_PROJECT
   GKE_NUM_NODES  = 2
@@ -32,7 +32,7 @@ module "gke_cluster" {
 Ці змінні можуть використовуватися в інших файлах Terraform, таких як main.tf і variables.tf.
 Ось приклад файлу vars.tfvars, який містить змінну name:
 ```hcl
-GOOGLE_PROJECT = "vit-um"
+GOOGLE_PROJECT = "terraformtest-472215"
 ```
 З файлу variables.tf виключимо значення цієї змінної за замовчуванням:
 ```hlc
@@ -68,7 +68,7 @@ Evaluating Terraform directory at .
   ✔ Evaluating Terraform directory 
   ✔ Retrieving cloud prices to calculate costs 
 
-Project: vit-um/tf
+Project: terraformtest-472215
 
  Name                                                 Monthly Qty  Unit   Monthly Cost 
                                                                                        
@@ -110,7 +110,7 @@ Apply complete! Resources: 3 added, 0 changed, 0 destroyed.
 ```hcl
 terraform {
   backend "gcs" {
-    bucket = "vit-secret"
+    bucket = "inv-secret"
     prefix = "terraform/state"
   }
 }
