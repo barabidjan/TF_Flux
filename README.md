@@ -1,135 +1,191 @@
-# IaC_Terraform
-# Підготовка інфраструктурного репозиторію для створення GKE кластеру.
+# Terraform_flux
+# Створення коду Terraform для Flux на kind_cluster
 
-## Створення початкового коду IAC.
-1. Роботу будемо виконувати на локальному комп'ютері, отже виконаємо [Authorize the gcloud CLI](https://cloud.google.com/sdk/docs/authorizing)
-```sh
-$ gcloud init
-* Commands that require authentication will use ydibka@gmail.com by default
-* Commands will reference project `terraformtest-472215` by default
-* Compute Engine commands will use region `europe-west3` by default
-* Compute Engine commands will use zone `europe-west3-c` by default
+1. В `main.tf` змінимо модуль що відповідає за розгортання кластеру згідно з завданням. Але оберемо гілку модуля, що може працювати без створення файлу `kubeconfig` та використовую інший вид авторизації
 
-$ gcloud auth list
-     Credentialed Accounts
-ACTIVE  ACCOUNT
-*       ydibka@gmail.com
-$ gcloud info
-Google Cloud SDK [456.0.0]
-```
-2. У файлі main.tf додайте наступний блок коду:
-```hlc
-module "gke_cluster" {
-  source         = "github.com/barabidjan/tf-google-gke-cluster"
-  GOOGLE_REGION  = var.GOOGLE_REGION
-  GOOGLE_PROJECT = var.GOOGLE_PROJECT
-  GKE_NUM_NODES  = 2
-}
-```
-
-3. Файл `vars.tfvars` використовується для зберігання чутливої конфігурації Terraform у вигляді змінних. Цей файл додамо в виключення `.gitignore`   
-
-Ці змінні можуть використовуватися в інших файлах Terraform, таких як main.tf і variables.tf.
-Ось приклад файлу vars.tfvars, який містить змінну name:
 ```hcl
-GOOGLE_PROJECT = "terraformtest-472215"
-```
-З файлу variables.tf виключимо значення цієї змінної за замовчуванням:
-```hlc
-variable "GOOGLE_PROJECT" {
-  type        = string
-  default     = ""
-  description = "GCP project to use"
+module "kind_cluster" {
+  source = "github.com/den-vasyliev/tf-kind-cluster?ref=cert_auth"
 }
 ```
-4. У cloud shell терміналі перейдіть до директорії, де знаходяться ваші файли Terraform, і запустіть terraform init, щоб ініціалізувати проєкт.
+2. Виконаємо ініціалізацію terraform:
 ```sh
-✗ tf init                              
+✗ terraform init
 Terraform has been successfully initialized!
+```
+- В процесі отримуємо помилку:
+```sh
+Error: Failed to query available provider packages
+│ 
+│ Could not retrieve the list of available versions for provider fluxcd/flux: locked provider registry.terraform.io/fluxcd/flux 1.2.1 does not match configured version constraint 1.0.0-rc.3; must use terraform init -upgrade to
+│ allow selection of new versions
+```
+- Щоб уникнути ціє помилки робимо модуль локальним та змінюємо у файлі `terraform.tf` версію провайдера на `1.2.1`
+```hcl
+  required_providers {
+    flux = {
+      source  = "fluxcd/flux"
+      version = "1.2.1"
+    }
+```
+- Виконуємо оновлення провайдера командою:
+```sh
+terraform init -upgrade
+```
+- Перевіримо які модулі були створені щоб видалити повністю файл стану:
+```sh
+✗ terraform state list
+module.flux_bootstrap.flux_bootstrap_git.this
+module.kind_cluster.kind_cluster.this
+✗ terraform state rm module.flux_bootstrap.flux_bootstrap_git.this
+Removed module.flux_bootstrap.flux_bootstrap_git.this
+Successfully removed 1 resource instance(s).
+✗ terraform state rm module.kind_cluster.kind_cluster.this        
+Removed module.kind_cluster.kind_cluster.this
+Successfully removed 1 resource instance(s).
+✗ kind get clusters            
+kind-cluster
+✗ kind delete clusters kind-cluster
+Deleted clusters: ["kind-cluster"]
+```
 
-✗ tf fmt
+
+3. Перевіримо код 
+```sh
 ✗ tf validate
 Success! The configuration is valid.
-✗ gcloud auth login
-✗ gcloud auth application-default login
-✗ tf plan -var-file=vars.tfvars
-Plan: 3 to add, 0 to change, 0 to destroy.
 ```
 
-## Тестування та оцінка затрат на інфраструктуру.
-1. У терміналі перейдіть до каталогу, де знаходяться файли Terraform, і запустіть infracost, щоб проаналізувати конфігурацію Terraform і оцінити вартість змін у вашій інфраструктурі.
+4. Виконаємо початкові команду `terraform apply`.
 ```sh
-✗ infracost breakdown --path .
-
-2023-12-17T17:56:54+02:00 INF Enabled policies V2
-2023-12-17T17:56:54+02:00 INF Enabled tag policies
-Evaluating Terraform directory at .
-  ✔ Downloading Terraform modules
-  ✔ Evaluating Terraform directory 
-  ✔ Retrieving cloud prices to calculate costs 
-
-Project: terraformtest-472215
-
- Name                                                 Monthly Qty  Unit   Monthly Cost 
-                                                                                       
- module.gke_cluster.google_container_cluster.this                                      
- └─ Cluster management fee                                    730  hours        $73.00 
-                                                                                       
- module.gke_cluster.google_container_node_pool.this                                    
- ├─ Instance usage (Linux/UNIX, on-demand, g1-small)        1,460  hours        $33.11 
- └─ Standard provisioned storage (pd-standard)                200  GB            $9.60 
-                                                                                       
- OVERALL TOTAL                                                                 $115.71 
-──────────────────────────────────
-2 cloud resources were detected:
-∙ 2 were estimated, all of which include usage-based costs, see https://infracost.io/usage-file
-
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
-┃ Project                                            ┃ Monthly cost ┃
-┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━┫
-┃ vit-um/tf                                          ┃ $116         ┃
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━┛
+✗ tf apply
+Apply complete! Resources: 5 added, 0 changed, 0 destroyed.
 ```
-## Розгортання інфраструктури.
-1. Якщо план виглядає добре, запустіть terraform apply, щоб застосувати зміни до вашої хмарної інфраструктури.
+
+5. Створені ресурси:
 ```sh
-✗ tf apply -var-file=vars.tfvars
-Apply complete! Resources: 3 added, 0 changed, 0 destroyed.
+$ tf state list
+module.flux_bootstrap.flux_bootstrap_git.this
+module.github_repository.github_repository.this
+module.github_repository.github_repository_deploy_key.this
+module.kind_cluster.kind_cluster.this
+module.tls_private_key.tls_private_key.this
 ```
 
-
-## Перевірка працездатності.
+6. Розміщення файлу в [bucket](https://console.cloud.google.com/storage/browser)  
+Щоб розмістити файл state в бакеті, ви можете використовувати команду terraform init з опцією --backend-config. Наприклад, щоб розмістити файл state в бакеті Google Cloud Storage, ви можете виконати наступну команду:
 ```sh
-✗ terraform show 
+# Створимо bucket:
+$ gsutil mb gs://vit-secret
+Creating gs://vit-secret/...
+
+# Перевірити вміст диску:
+$ gsutil ls gs://vit-secret
+gs://vit-secret/terraform/
 ```
+7. Як створити bucket [читаємо документацію](https://developer.hashicorp.com/terraform/language/settings/backends/gcs#example-configuration) та додаємо до основного файлу конфігурації наступний код:
 
-
-## Додаткові налаштування.
-1. У Google Cloud Console перейдіть до розділу [Cloud Storage](https://console.cloud.google.com/storage/browser) і створіть новий bucket для зберігання вашого стану Terraform.
-2. У файлі конфігурації Terraform (main.tf) додайте наступний код, щоб налаштувати бекенд на використання Google Cloud Storage:
 ```hcl
 terraform {
   backend "gcs" {
-    bucket = "inv-secret"
-    prefix = "terraform/state"
+    bucket  = "tf-state-prod"
+    prefix  = "vit-secret"
   }
 }
 ```
-3. Після того, як бекенд налаштовано, ви можете застосувати зміни до вашої інфраструктури, як зазвичай, запустивши terraform apply. Стан Terraform буде збережено у хмарному сховищі Google, яке ви створили на кроці 1.
-
-![terraform_state](terraform_state.png)  
-
-4. Якщо вам потрібно видалити інфраструктуру, ви можете запустити terraform destroy. При цьому будуть видалені всі ресурси, створені тераформою, і всі пов'язані з ними дані.
 ```sh
-✗ tf destroy -var-file=vars.tfvars
-Destroy complete! Resources: 3 destroyed.
+$ terraform init
+$ tf show | more
 ```
-5. Якщо вам більше не потрібно використовувати GCS для зберігання стану Terraform, ви можете видалити ts.state файл.
 
-Крім того, при роботі з Terraform state важливо забезпечити належний контроль і моніторинг доступу до нього. Як ми вже обговорювали раніше, Terraform State можна зберігати віддалено, що може зробити його більш безпечним і простим в управлінні. Однак, важливо забезпечити належний контроль доступу, щоб запобігти несанкціонованому доступу або зміні стану.
+8. Перевіримо список ns по стан поду системи flux:
+```sh
+✗ k get ns
+NAME                 STATUS   AGE
+default              Active   16m
+flux-system          Active   15m
+kube-node-lease      Active   16m
+kube-public          Active   16m
+kube-system          Active   16m
+local-path-storage   Active   16m
 
-Важливо зазначити, що стейт Terraform може містити конфіденційну інформацію, таку як паролі, ключі доступу та інші облікові дані. Цією інформацією слід ретельно керувати і захищати, щоб запобігти несанкціонованому доступу або витоку.
+✗ k get po -n flux-system
+NAME                                       READY   STATUS    RESTARTS   AGE
+helm-controller-69dbf9f968-qsgq9           1/1     Running   0          16m
+kustomize-controller-796b4fbf5d-jxqdx      1/1     Running   0          16m
+notification-controller-78f97c759b-c8vpr   1/1     Running   0          16m
+source-controller-7bc7c48d8d-c8kxk         1/1     Running   0          16m
+``` 
+9. Для зручності встановимо [CLI клієнт Flux](https://fluxcd.io/flux/installation/)
+```sh
+✗ curl -s https://fluxcd.io/install.sh | bash
+✗ flux get all
+```
 
-Конфіденційні дані повинні надійно зберігатися в сховищі ключів або іншому захищеному сховищі, а доступ до них повинен надаватися Terraform за допомогою відповідних методів, таких як змінні середовища або інтеграція зі сховищем ключів.
+10. Додамо в репозиторій каталог `demo` та файл `ns.yaml` що містить маніфест довільного `namespace`  
+```sh
+$ k ai "маніфест ns demo"
+✨ Attempting to apply the following manifest:
 
-Вживаючи належних заходів для захисту ваших конфіденційних даних і контролю доступу до вашого стану в Terraform, ви можете забезпечити безпеку і надійність вашої інфраструктури.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo
+```
+- Після зміни стану репозиторію контролер Flux їх виявить:
+    - зробить git clone  
+    - підготує артефакт   
+    - виконає узгодження поточного стану IC   
+
+У даному випадку буде створено `ns demo`:
+```sh
+
+✗ flux logs -f
+2023-12-19T08:36:29.686Z info GitRepository/flux-system.flux-system - stored artifact for commit 'Create ns.yaml' 
+2023-12-19T08:37:31.484Z info GitRepository/flux-system.flux-system - garbage collected 1 artifacts 
+
+✗ k get ns 
+NAME                 STATUS   AGE
+default              Active   23m
+demo                 Active   4s
+```
+Це був приклад як Flux може керувати конфігурацією ІС Kubernetes
+
+11. Застосуємо CLI Flux для генерації маніфестів необхідних ресурсів:
+```sh
+$ git clone https://github.com/vit-um/flux-gitops.git
+$ cd ../flux-gitops 
+$ flux create source git kbot \
+    --url=https://github.com/vit-um/kbot \
+    --branch=main \
+    --namespace=demo \
+    --export > clusters/demo/kbot-gr.yaml
+$ flux create helmrelease kbot \
+    --namespace=demo \
+    --source=GitRepository/kbot \
+    --chart="./helm" \
+    --interval=1m \
+    --export > clusters/demo/kbot-hr.yaml
+$ git add .
+$ git commit -m"add manifest"
+$ git push
+
+$ flux logs -f
+2023-12-19T08:58:45.061Z info GitRepository/flux-system.flux-system - stored artifact for commit 'add manifest' 
+2023-12-19T08:58:45.466Z info Kustomization/flux-system.flux-system - server-side apply for cluster definitions completed 
+2023-12-19T08:58:45.559Z info Kustomization/flux-system.flux-system - server-side apply completed 
+2023-12-19T08:58:45.596Z info Kustomization/flux-system.flux-system - Reconciliation finished in 498.659581ms, next run in 10m0s 
+2023-12-19T08:59:46.501Z info GitRepository/flux-system.flux-system - garbage collected 1 artifacts 
+```
+
+11. Перевіримо наявність пода з нашим PET-проектом та розберемо кластер:
+```sh
+$ k get po -n demo
+NAME                         READY   STATUS             RESTARTS       AGE
+kbot-helm-6796599d7c-sqwx7   0/1     CrashLoopBackOff   7 (100s ago)   12m
+k describe po -n demo | grep Warning
+  Warning  BackOff    4m35s (x47 over 14m)  kubelet            Back-off restarting failed container kbot in pod kbot-helm-6796599d7c-sqwx7_demo(401ca7a7-2b0c-4a27-b81c-e053936cd9ed)
+
+$ tf destroy
+$ tf state list 
+```
